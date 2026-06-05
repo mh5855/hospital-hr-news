@@ -22,7 +22,12 @@ export async function GET(req: NextRequest) {
   if (priority) query = query.eq('priority', priority)
   if (hospitalScope) query = query.eq('hospital_scope', hospitalScope)
   if (isNew === 'true') query = query.eq('is_new', true)
-  if (search) query = query.ilike('title', `%${search}%`)
+  if (search) {
+    // 제목·요약·HR영향·태그(JSONB→text) 전체 검색
+    query = query.or(
+      `title.ilike.%${search}%,summary.ilike.%${search}%,hr_impact.ilike.%${search}%,tags::text.ilike.%${search}%`
+    )
+  }
 
   const { data, error, count } = await query
 
