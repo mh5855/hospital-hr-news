@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { NewsItem } from '@/lib/types'
 import { NewsCard } from '@/components/NewsCard'
 import { StatsBar } from '@/components/StatsBar'
@@ -23,16 +23,30 @@ interface NewsResponse {
   totalPages: number
 }
 
+// 단어가 기사의 어느 필드에든 포함되는지 검사
+function matchesSearch(item: NewsItem, term: string): boolean {
+  if (!term.trim()) return true
+  const q = term.trim().toLowerCase()
+  return (
+    item.title?.toLowerCase().includes(q) ||
+    item.summary?.toLowerCase().includes(q) ||
+    item.hr_impact?.toLowerCase().includes(q) ||
+    (Array.isArray(item.tags) && item.tags.some((t) => t.toLowerCase().includes(q))) ||
+    (Array.isArray(item.job_type) && item.job_type.some((t) => t.toLowerCase().includes(q))) ||
+    item.source?.toLowerCase().includes(q) ||
+    false
+  )
+}
+
 export default function HomePage() {
-  const [news, setNews] = useState<NewsItem[]>([])
+  const [allNews, setAllNews] = useState<NewsItem[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
   const [stats, setStats] = useState<Stats>({
     total: 0, urgent: 0, important: 0, new_today: 0,
     last_collected: null, last_status: null,
   })
-  const [filters, setFilters] = useState<Record<string, unknown>>({})
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [total, setTotal] = useState(0)
+  // 서버 필터: priority / hospital_scope / is_new
+  const [serverFilters, setServerFilters] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
 
   const fetchStats = useCallback(async () => {
@@ -40,45 +54,41 @@ export default function HomePage() {
     if (res.ok) setStats(await res.json())
   }, [])
 
-  const fetchNews = useCallback(async (currentFilters: Record<string, unknown>, currentPage: number) => {
+  // 서버에서 최대 200건 한 번에 가져옴 (검색은 클라이언트에서)
+  const fetchNews = useCallback(async (filters: Record<string, unknown>) => {
     setLoading(true)
-    const params = new URLSearchParams()
-    params.set('page', String(currentPage))
-    params.set('limit', '12')
-    Object.entries(currentFilters).forEach(([k, v]) => {
-      if (v !== undefined && v !== '') params.set(k, String(v))
+    const params = new URLSearchParams({ page: '1', limit: '200' })
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== '' && v !== false) params.set(k, String(v))
     })
     const res = await fetch(`/api/news?${params}`)
     if (res.ok) {
       const data: NewsResponse = await res.json()
-      setNews(data.items)
-      setTotal(data.total)
-      setTotalPages(data.totalPages)
+      setAllNews(data.items)
     }
     setLoading(false)
   }, [])
 
   useEffect(() => {
     fetchStats()
-    fetchNews({}, 1)
+    fetchNews({})
   }, [fetchStats, fetchNews])
 
-  const handleFilterChange = (newFilters: Record<string, unknown>) => {
-    setFilters(newFilters)
-    setPage(1)
-    fetchNews(newFilters, 1)
-  }
+  // 클라이언트 필터링: 검색어로 즉시 필터
+  const displayedNews = useMemo(
+    () => allNews.filter((item) => matchesSearch(item, searchTerm)),
+    [allNews, searchTerm]
+  )
 
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage)
-    fetchNews(filters, newPage)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+  const handleServerFilterChange = (filters: Record<string, unknown>) => {
+    setServerFilters(filters)
+    fetchNews(filters)
   }
 
   const handleCollectSuccess = () => {
     setTimeout(() => {
       fetchStats()
-      fetchNews(filters, page)
+      fetchNews(serverFilters)
     }, 1000)
   }
 
@@ -105,11 +115,20 @@ export default function HomePage() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         <StatsBar stats={stats} />
-        <FilterBar onFilterChange={handleFilterChange} />
+
+        <FilterBar
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          onFilterChange={handleServerFilterChange}
+        />
 
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-gray-500">
-            {loading ? '검색 중...' : `총 ${total.toLocaleString()}건`}
+            {loading
+              ? '불러오는 중...'
+              : searchTerm
+              ? `"${searchTerm}" 검색 결과 ${displayedNews.length}건 / 전체 ${allNews.length}건`
+              : `전체 ${allNews.length}건`}
           </p>
         </div>
 
@@ -127,41 +146,22 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-        ) : news.length === 0 ? (
+        ) : displayedNews.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-4xl mb-4">📭</p>
-            <p className="text-gray-500 text-lg font-medium">수집된 뉴스가 없습니다</p>
+            <p className="text-4xl mb-4">{searchTerm ? '🔍' : '📭'}</p>
+            <p className="text-gray-500 text-lg font-medium">
+              {searchTerm ? `"${searchTerm}"에 해당하는 기사가 없습니다` : '수집된 뉴스가 없습니다'}
+            </p>
             <p className="text-gray-400 text-sm mt-2">
-              우측 상단의 &ldquo;뉴스 수집&rdquo; 버튼을 클릭해 첫 수집을 시작하세요
+              {searchTerm ? '다른 단어로 검색해보세요' : '우측 상단의 "뉴스 수집" 버튼을 클릭해 첫 수집을 시작하세요'}
             </p>
           </div>
         ) : (
-          <>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {news.map((item) => (
-                <NewsCard key={item.id} item={item} />
-              ))}
-            </div>
-            {totalPages > 1 && (
-              <div className="flex justify-center items-center gap-2 mt-8">
-                <button
-                  onClick={() => handlePageChange(page - 1)}
-                  disabled={page === 1}
-                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors"
-                >
-                  이전
-                </button>
-                <span className="text-sm text-gray-600 px-3">{page} / {totalPages}</span>
-                <button
-                  onClick={() => handlePageChange(page + 1)}
-                  disabled={page === totalPages}
-                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors"
-                >
-                  다음
-                </button>
-              </div>
-            )}
-          </>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayedNews.map((item) => (
+              <NewsCard key={item.id} item={item} />
+            ))}
+          </div>
         )}
       </main>
     </div>
