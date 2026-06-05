@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 interface FilterBarProps {
   onFilterChange: (filters: Record<string, unknown>) => void
@@ -11,6 +11,17 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
   const [scope, setScope] = useState('')
   const [isNew, setIsNew] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 입력할 때마다 300ms 후 자동 검색
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      onFilterChange(buildFilters({ search }))
+    }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
 
   const buildFilters = (overrides: Record<string, unknown> = {}) => {
     const base: Record<string, unknown> = {
@@ -26,15 +37,13 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
   }
 
   const applySearch = (value: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
     onFilterChange(buildFilters({ search: value }))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') applySearch(search)
-    if (e.key === 'Escape') {
-      setSearch('')
-      applySearch('')
-    }
+    if (e.key === 'Escape') { setSearch(''); applySearch('') }
   }
 
   const handleReset = () => {
