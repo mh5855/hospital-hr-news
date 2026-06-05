@@ -116,7 +116,7 @@ async function summarizeWithOpenRouter(articles: RawArticle[]): Promise<Collecte
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://app-neon-psi-18.vercel.app',
-      'X-Title': '병원 노무인사 뉴스',
+      'X-Title': 'Hospital HR News',
     },
     body: JSON.stringify({
       model: 'anthropic/claude-haiku-4-5',
