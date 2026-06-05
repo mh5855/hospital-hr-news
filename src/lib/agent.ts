@@ -87,7 +87,25 @@ async function searchWithPerplexity(query: string): Promise<string> {
   }
 
   const data = await response.json()
+  // max_tokens 초과로 잘린 경우 content에 불완전한 JSON이 올 수 있음
   return data.choices?.[0]?.message?.content || ''
+}
+
+function safeParseJsonArray(text: string): CollectedNewsItem[] {
+  // 완전한 JSON 배열 추출 시도
+  const match = text.match(/\[[\s\S]*\]/)
+  if (!match) return []
+  try {
+    return JSON.parse(match[0])
+  } catch {
+    // 잘린 JSON 복구: 마지막 완전한 객체까지만 파싱
+    try {
+      const truncated = match[0].replace(/,?\s*\{[^}]*$/, '') + ']'
+      return JSON.parse(truncated)
+    } catch {
+      return []
+    }
+  }
 }
 
 export async function collectNews(): Promise<{
@@ -107,10 +125,7 @@ export async function collectNews(): Promise<{
       batch.map(async (query) => {
         try {
           const text = await searchWithPerplexity(query)
-          const match = text.match(/\[[\s\S]*\]/)
-          if (!match) return
-
-          const items = JSON.parse(match[0]) as CollectedNewsItem[]
+          const items = safeParseJsonArray(text) as CollectedNewsItem[]
           for (const item of items) {
             if (!item.title || !item.summary) continue
             // URL 없으면 제목 기준 중복 체크
