@@ -14,9 +14,13 @@ const SEARCH_QUERIES = [
   '2026년 PA간호사 간호조무사 제도 변경',
 ]
 
+const CUTOFF_DATE = '2025-01-01'
+
 const SYSTEM_PROMPT = `당신은 종합병원(100~500병상) 노무인사 전문 뉴스 분석 에이전트입니다.
 
-2026년에 시행되었거나 변경된 노동법·근로기준법 관련 내용을 종합병원 HR 관점으로 요약하세요.
+**중요: 2025년 1월 1일 이후 발행되거나 시행된 내용만 포함하세요. 2024년 이전 자료는 절대 포함하지 마세요.**
+
+2025~2026년에 시행되었거나 변경된 노동법·근로기준법 관련 내용을 종합병원 HR 관점으로 요약하세요.
 
 우선순위 분류:
 - urgent: 간호등급제 변경, 보건의료노조 파업, 노동법 개정 시행, 대법원 판결
@@ -29,7 +33,7 @@ hospital_scope:
 - reference_only: 상급종합병원 또는 참고용
 
 요약 원칙 (200~350자):
-- 2026년 시행일·변경 내용 명시
+- 2025년 이후 시행일·변경 내용 명시
 - 종합병원 HR 영향 구체 수치 포함
 - 법 조항 조문번호 병기 (예: 근로기준법 제50조)
 - 즉시 조치사항 1~3개 제시`
@@ -128,6 +132,8 @@ export async function collectNews(): Promise<{
           const items = safeParseJsonArray(text) as CollectedNewsItem[]
           for (const item of items) {
             if (!item.title || !item.summary) continue
+            // 2025-01-01 이전 뉴스 제외
+            if (item.published_at && item.published_at < CUTOFF_DATE) continue
             // URL 없으면 제목 기준 중복 체크
             const key = item.source_url || item.title
             if (seenUrls.has(key)) continue
