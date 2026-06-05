@@ -21,12 +21,28 @@ async function runCollect(triggerType: 'manual' | 'cron' | 'api') {
     let skipped = 0
 
     for (const item of items) {
-      const { error } = await db.from('news_items').upsert(
-        { ...item, is_new: true, is_summarized: true, source_status: 'ok' },
-        { onConflict: 'source_url', ignoreDuplicates: true }
-      )
-      if (error) skipped++
-      else collected++
+      if (item.source_url) {
+        // URL 있으면 upsert (중복 방지)
+        const { error } = await db.from('news_items').upsert(
+          { ...item, is_new: true, is_summarized: true, source_status: 'ok' },
+          { onConflict: 'source_url', ignoreDuplicates: true }
+        )
+        if (error) skipped++
+        else collected++
+      } else {
+        // URL 없으면 제목 중복 체크 후 insert
+        const { data: existing } = await db
+          .from('news_items')
+          .select('id')
+          .eq('title', item.title)
+          .single()
+        if (existing) { skipped++; continue }
+        const { error } = await db
+          .from('news_items')
+          .insert({ ...item, is_new: true, is_summarized: true, source_status: 'ok' })
+        if (error) skipped++
+        else collected++
+      }
     }
 
     // 24시간 이전 뉴스 is_new = false
