@@ -53,7 +53,7 @@ export interface CollectedNewsItem {
   hr_impact: string
   action_checklist: string[]
   source: string
-  source_url: string
+  source_url: string | null
   published_at: string
   priority: Priority
   tags: string[]

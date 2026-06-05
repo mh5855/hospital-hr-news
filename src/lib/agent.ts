@@ -120,7 +120,7 @@ export async function collectNews(): Promise<{
 
             collected.push({
               ...item,
-              source_url: item.source_url || undefined,
+              source_url: item.source_url || null,
               priority: validatePriority(item.priority),
               hospital_scope: validateScope(item.hospital_scope),
               action_checklist: Array.isArray(item.action_checklist) ? item.action_checklist : [],
